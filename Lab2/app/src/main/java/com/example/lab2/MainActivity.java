@@ -8,6 +8,8 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.location.Address;
 import android.location.Geocoder;
+import android.location.Location;
+import android.location.LocationManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.widget.Toast;
@@ -20,7 +22,11 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 
 import com.example.lab2.databinding.ActivityMainBinding;
 import com.google.android.gms.location.FusedLocationProviderClient;
+import com.google.android.gms.location.LocationCallback;
+import com.google.android.gms.location.LocationRequest;
+import com.google.android.gms.location.LocationResult;
 import com.google.android.gms.location.LocationServices;
+import com.google.android.gms.location.Priority;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -39,10 +45,10 @@ public class MainActivity extends AppCompatActivity {
     private FusedLocationProviderClient fusedLocationClient;
     private static final int PERMISSION_REQUEST_CODE = 1001;
     private static final String CHANNEL_ID = "weather_alerts";
-    
-    // Lưu tọa độ hiện tại
-    private double currentLat = 21.02; // Mặc định HN
+
+    private double currentLat = 21.02;
     private double currentLon = 105.83;
+    private LocationCallback locationCallback;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -61,7 +67,6 @@ public class MainActivity extends AppCompatActivity {
 
         binding.btnViewMap.setOnClickListener(v -> {
             Intent intent = new Intent(MainActivity.this, WeatherMapActivity.class);
-            // TRUYỀN TỌA ĐỘ SANG ACTIVITY BẢN ĐỒ
             intent.putExtra("lat", currentLat);
             intent.putExtra("lon", currentLon);
             startActivity(intent);
@@ -70,8 +75,12 @@ public class MainActivity extends AppCompatActivity {
 
     private void checkAndRequestPermissions() {
         List<String> permissionsNeeded = new ArrayList<>();
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+        boolean fineGranted = ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED;
+        boolean coarseGranted = ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED;
+
+        if (!fineGranted && !coarseGranted) {
             permissionsNeeded.add(Manifest.permission.ACCESS_FINE_LOCATION);
+            permissionsNeeded.add(Manifest.permission.ACCESS_COARSE_LOCATION);
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ActivityCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
@@ -87,18 +96,85 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void getLastLocation() {
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
-            fusedLocationClient.getCurrentLocation(com.google.android.gms.location.Priority.PRIORITY_HIGH_ACCURACY, null)
-                    .addOnSuccessListener(this, location -> {
-                        if (location != null) {
-                            currentLat = location.getLatitude();
-                            currentLon = location.getLongitude();
-                            fetchWeatherData(currentLat, currentLon);
-                        } else {
-                            Toast.makeText(this, "Location null. Please enable GPS.", Toast.LENGTH_LONG).show();
-                        }
-                    });
+        if (!hasLocationPermission()) {
+            return;
         }
+
+        if (!isLocationEnabled()) {
+            Toast.makeText(this, "Hay bat GPS hoac Location de lay vi tri hien tai.", Toast.LENGTH_LONG).show();
+            fetchWeatherData(currentLat, currentLon);
+            return;
+        }
+
+        fusedLocationClient.getLastLocation()
+                .addOnSuccessListener(this, location -> {
+                    if (location != null) {
+                        handleNewLocation(location);
+                    }
+                    requestSingleCurrentLocation();
+                })
+                .addOnFailureListener(this, e -> requestSingleCurrentLocation());
+    }
+
+    private void requestSingleCurrentLocation() {
+        if (!hasLocationPermission()) {
+            return;
+        }
+
+        fusedLocationClient.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, null)
+                .addOnSuccessListener(this, location -> {
+                    if (location != null) {
+                        handleNewLocation(location);
+                    } else {
+                        requestLocationUpdatesFallback();
+                    }
+                })
+                .addOnFailureListener(this, e -> requestLocationUpdatesFallback());
+    }
+
+    private void requestLocationUpdatesFallback() {
+        if (!hasLocationPermission()) {
+            return;
+        }
+
+        LocationRequest locationRequest = new LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 3000)
+                .setMinUpdateIntervalMillis(1500)
+                .setMaxUpdates(3)
+                .build();
+
+        if (locationCallback == null) {
+            locationCallback = new LocationCallback() {
+                @Override
+                public void onLocationResult(@NonNull LocationResult locationResult) {
+                    Location location = locationResult.getLastLocation();
+                    if (location != null) {
+                        handleNewLocation(location);
+                        fusedLocationClient.removeLocationUpdates(this);
+                    }
+                }
+            };
+        }
+
+    }
+
+    private void handleNewLocation(@NonNull Location location) {
+        currentLat = location.getLatitude();
+        currentLon = location.getLongitude();
+        fetchWeatherData(currentLat, currentLon);
+    }
+
+    private boolean hasLocationPermission() {
+        return ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                || ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED;
+    }
+
+    private boolean isLocationEnabled() {
+        LocationManager locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
+        if (locationManager == null) {
+            return false;
+        }
+        return locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)
+                || locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER);
     }
 
     private void fetchWeatherData(double lat, double lon) {
@@ -115,8 +191,7 @@ public class MainActivity extends AppCompatActivity {
                 "temperature_2m,weathercode,precipitation_probability,cloudcover",
                 "temperature_2m_max,temperature_2m_min,weathercode,precipitation_probability_max",
                 "auto"
-        )
-                .enqueue(new Callback<WeatherResponse>() {
+        ).enqueue(new Callback<WeatherResponse>() {
             @Override
             public void onResponse(@NonNull Call<WeatherResponse> call, @NonNull Response<WeatherResponse> response) {
                 if (response.isSuccessful() && response.body() != null) {
@@ -141,7 +216,7 @@ public class MainActivity extends AppCompatActivity {
                 Address addr = addresses.get(0);
                 String locality = addr.getLocality();
                 String adminArea = addr.getAdminArea();
-                
+
                 if (locality != null) cityName = locality;
                 else if (adminArea != null) cityName = adminArea;
                 else if (addr.getCountryName() != null) cityName = addr.getCountryName();
@@ -152,7 +227,7 @@ public class MainActivity extends AppCompatActivity {
 
         binding.tvLocation.setText(cityName);
         binding.tvLocation.setTextColor(android.graphics.Color.BLACK);
-        
+
         binding.tvCurrentTemp.setText(String.format(Locale.getDefault(), "%.1f°C", weather.currentWeather.temperature));
         binding.tvCurrentTemp.setTextColor(android.graphics.Color.BLACK);
 
@@ -169,13 +244,26 @@ public class MainActivity extends AppCompatActivity {
     private String getWeatherDescription(int code) {
         switch (code) {
             case 0: return "Trời quang";
-            case 1: case 2: case 3: return "Mây rải rác";
-            case 45: case 48: return "Sương mù";
-            case 51: case 53: case 55: return "Mưa phùn";
-            case 61: case 63: case 65: return "Mưa nhẹ";
-            case 71: case 73: case 75: return "Tuyết rơi";
-            case 80: case 81: case 82: return "Mưa rào";
-            case 95: case 96: case 99: return "Dông bão";
+            case 1:
+            case 2:
+            case 3: return "Mây rải rác";
+            case 45:
+            case 48: return "Sương mù";
+            case 51:
+            case 53:
+            case 55: return "Mưa phùn";
+            case 61:
+            case 63:
+            case 65: return "Mưa nhẹ";
+            case 71:
+            case 73:
+            case 75: return "Tuyết rơi";
+            case 80:
+            case 81:
+            case 82: return "Mưa rào";
+            case 95:
+            case 96:
+            case 99: return "Dông bão";
             default: return "Thời tiết khác (" + code + ")";
         }
     }
@@ -211,8 +299,21 @@ public class MainActivity extends AppCompatActivity {
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == PERMISSION_REQUEST_CODE && grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-            getLastLocation();
+        if (requestCode == PERMISSION_REQUEST_CODE) {
+            if (hasLocationPermission()) {
+                getLastLocation();
+            } else {
+                Toast.makeText(this, "Khong co quyen vi tri, dang dung vi tri mac dinh.", Toast.LENGTH_LONG).show();
+                fetchWeatherData(currentLat, currentLon);
+            }
+        }
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if (locationCallback != null) {
+            fusedLocationClient.removeLocationUpdates(locationCallback);
         }
     }
 }
