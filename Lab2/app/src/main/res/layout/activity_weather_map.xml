@@ -11,6 +11,16 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
+    <Button
+        android:id="@+id/btnBack"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|start"
+        android:layout_margin="16dp"
+        android:text="Quay lại"
+        android:textAllCaps="false"
+        android:backgroundTint="#616161"/>
+
     <LinearLayout
         android:id="@+id/layerControls"
         android:layout_width="wrap_content"

@@ -45,6 +45,7 @@ public class WeatherMapActivity extends FragmentActivity implements OnMapReadyCa
     private Button btnTempLayer;
     private Button btnRainLayer;
     private Button btnCloudLayer;
+    private Button btnBack;
     private LayerType selectedLayer = LayerType.TEMPERATURE;
 
     @Override
@@ -55,6 +56,7 @@ public class WeatherMapActivity extends FragmentActivity implements OnMapReadyCa
         btnTempLayer = findViewById(R.id.btnTempLayer);
         btnRainLayer = findViewById(R.id.btnRainLayer);
         btnCloudLayer = findViewById(R.id.btnCloudLayer);
+        btnBack = findViewById(R.id.btnBack);
 
         Retrofit retrofit = new Retrofit.Builder()
                 .baseUrl("https://api.open-meteo.com/")
@@ -65,6 +67,9 @@ public class WeatherMapActivity extends FragmentActivity implements OnMapReadyCa
         btnTempLayer.setOnClickListener(v -> switchLayer(LayerType.TEMPERATURE));
         btnRainLayer.setOnClickListener(v -> switchLayer(LayerType.RAIN));
         btnCloudLayer.setOnClickListener(v -> switchLayer(LayerType.CLOUD));
+        
+        btnBack.setOnClickListener(v -> finish());
+
         updateLayerButtons();
 
         SupportMapFragment mapFragment = (SupportMapFragment) getSupportFragmentManager()
@@ -84,7 +89,7 @@ public class WeatherMapActivity extends FragmentActivity implements OnMapReadyCa
 
         centerMarker = mMap.addMarker(new MarkerOptions()
                 .position(startPoint)
-                .title("Dang tai du lieu thoi tiet..."));
+                .title("Đang tải dữ liệu thời tiết..."));
 
         mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(startPoint, 9.8f));
         mMap.getUiSettings().setZoomControlsEnabled(true);
@@ -210,7 +215,7 @@ public class WeatherMapActivity extends FragmentActivity implements OnMapReadyCa
                             + String.format(Locale.getDefault(), "%.1f°C", data.currentWeather.temperature));
                     centerMarker.setSnippet(String.format(
                             Locale.getDefault(),
-                            "Gio: %.1f km/h | Mua: %.0f%% | May: %.0f%% | Toa do: %.2f, %.2f",
+                            "Gió: %.1f km/h | Mưa: %.0f%% | Mây: %.0f%% | Tọa độ: %.2f, %.2f",
                             data.currentWeather.windSpeed,
                             rainProbability,
                             cloudCover,
@@ -307,12 +312,12 @@ public class WeatherMapActivity extends FragmentActivity implements OnMapReadyCa
     }
 
     private String getWeatherStatus(int code) {
-        if (code == 0) return "Troi quang";
-        if (code <= 3) return "Co may";
-        if (code >= 45 && code <= 48) return "Suong mu";
-        if (code >= 51 && code <= 67) return "Dang mua";
-        if (code >= 80 && code <= 82) return "Mua rao";
-        if (code >= 95) return "Dong bao";
-        return "Thoi tiet";
+        if (code == 0) return "Trời quang";
+        if (code <= 3) return "Có mây";
+        if (code >= 45 && code <= 48) return "Sương mù";
+        if (code >= 51 && code <= 67) return "Đang mưa";
+        if (code >= 80 && code <= 82) return "Mưa rào";
+        if (code >= 95) return "Dông bão";
+        return "Thời tiết";
     }
 }

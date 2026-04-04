@@ -71,6 +71,11 @@ public class MainActivity extends AppCompatActivity {
             intent.putExtra("lon", currentLon);
             startActivity(intent);
         });
+
+        binding.btnExit.setOnClickListener(v -> {
+            finishAffinity();
+            System.exit(0);
+        });
     }
 
     private void checkAndRequestPermissions() {
@@ -101,7 +106,7 @@ public class MainActivity extends AppCompatActivity {
         }
 
         if (!isLocationEnabled()) {
-            Toast.makeText(this, "Hay bat GPS hoac Location de lay vi tri hien tai.", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "Hãy bật GPS hoặc Vị trí để lấy dữ liệu chính xác.", Toast.LENGTH_LONG).show();
             fetchWeatherData(currentLat, currentLon);
             return;
         }
@@ -202,13 +207,13 @@ public class MainActivity extends AppCompatActivity {
 
             @Override
             public void onFailure(@NonNull Call<WeatherResponse> call, @NonNull Throwable t) {
-                Toast.makeText(MainActivity.this, "Error: " + t.getMessage(), Toast.LENGTH_SHORT).show();
+                Toast.makeText(MainActivity.this, "Lỗi: " + t.getMessage(), Toast.LENGTH_SHORT).show();
             }
         });
     }
 
     private void updateUI(WeatherResponse weather) {
-        String cityName = String.format(Locale.getDefault(), "Lat: %.2f, Lon: %.2f", weather.latitude, weather.longitude);
+        String cityName = String.format(Locale.getDefault(), "Vĩ độ: %.2f, Kinh độ: %.2f", weather.latitude, weather.longitude);
         Geocoder geocoder = new Geocoder(this, Locale.getDefault());
         try {
             List<Address> addresses = geocoder.getFromLocation(weather.latitude, weather.longitude, 1);
@@ -270,9 +275,9 @@ public class MainActivity extends AppCompatActivity {
 
     private void checkWeatherAlerts(WeatherResponse weather) {
         if (weather.currentWeather.temperature > 35) {
-            sendNotification("Extreme Heat", "Temperature is over 35°C!");
+            sendNotification("Cảnh báo nắng nóng", "Nhiệt độ hiện tại đã vượt quá 35°C!");
         } else if (weather.currentWeather.weatherCode >= 80) {
-            sendNotification("Rain Alert", "Heavy rain detected!");
+            sendNotification("Cảnh báo mưa", "Phát hiện có mưa rào hoặc dông bão!");
         }
     }
 
@@ -290,7 +295,7 @@ public class MainActivity extends AppCompatActivity {
 
     private void createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel channel = new NotificationChannel(CHANNEL_ID, "Weather Alerts", NotificationManager.IMPORTANCE_HIGH);
+            NotificationChannel channel = new NotificationChannel(CHANNEL_ID, "Thông báo thời tiết", NotificationManager.IMPORTANCE_HIGH);
             NotificationManager manager = getSystemService(NotificationManager.class);
             if (manager != null) manager.createNotificationChannel(channel);
         }
@@ -303,7 +308,7 @@ public class MainActivity extends AppCompatActivity {
             if (hasLocationPermission()) {
                 getLastLocation();
             } else {
-                Toast.makeText(this, "Khong co quyen vi tri, dang dung vi tri mac dinh.", Toast.LENGTH_LONG).show();
+                Toast.makeText(this, "Không có quyền vị trí, đang dùng vị trí mặc định.", Toast.LENGTH_LONG).show();
                 fetchWeatherData(currentLat, currentLon);
             }
         }
