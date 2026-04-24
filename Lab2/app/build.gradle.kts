@@ -4,7 +4,7 @@ plugins {
 
 android {
     namespace = "com.example.lab2"
-    compileSdk = 34
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.example.lab2"
@@ -47,6 +47,7 @@ dependencies {
     implementation(libs.converter.gson)
     implementation(libs.play.services.location)
     implementation(libs.play.services.maps)
+    implementation(libs.android.maps.utils)
     implementation(libs.glide)
     testImplementation(libs.junit)
     androidTestImplementation(libs.ext.junit)
