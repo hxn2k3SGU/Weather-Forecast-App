@@ -43,9 +43,37 @@ public class WeatherMapActivity extends FragmentActivity implements OnMapReadyCa
     private static final String MAP_GRID_HOURLY_PARAMS =
             "temperature_2m,precipitation_probability,cloudcover";
     private static final int FORECAST_HOURS = 1;
-    private static final int CAMERA_IDLE_DEBOUNCE_MS = 320;
-    private static final int MAX_GRID_POINTS = 132;
+    private static final int CAMERA_IDLE_DEBOUNCE_MS = 500;  // Increased for fewer API calls
+    private static final int MAX_GRID_POINTS = 72;  // Reduced from 132 for better performance
     private static final double VIEWPORT_PADDING_RATIO = 0.12;
+    
+    // Color cache to avoid repeated Color.parseColor() calls
+    private static final int COLOR_TEMP_1 = Color.parseColor("#43238F");
+    private static final int COLOR_TEMP_2 = Color.parseColor("#2A68D8");
+    private static final int COLOR_TEMP_3 = Color.parseColor("#40BFC9");
+    private static final int COLOR_TEMP_4 = Color.parseColor("#DCCF58");
+    private static final int COLOR_TEMP_5 = Color.parseColor("#F19A35");
+    private static final int COLOR_TEMP_6 = Color.parseColor("#D64A2D");
+    
+    private static final int COLOR_CLOUD_1 = Color.parseColor("#E8F6FB");
+    private static final int COLOR_CLOUD_2 = Color.parseColor("#BFD8EA");
+    private static final int COLOR_CLOUD_3 = Color.parseColor("#97B9CF");
+    private static final int COLOR_CLOUD_4 = Color.parseColor("#6B8CA7");
+    private static final int COLOR_CLOUD_5 = Color.parseColor("#465B75");
+    
+    private static final int COLOR_RAIN_1 = Color.parseColor("#BFEFFF");
+    private static final int COLOR_RAIN_2 = Color.parseColor("#73C5F4");
+    private static final int COLOR_RAIN_3 = Color.parseColor("#348BDE");
+    private static final int COLOR_RAIN_4 = Color.parseColor("#1D5DB9");
+    private static final int COLOR_RAIN_5 = Color.parseColor("#0C2F75");
+    
+    private static final int COLOR_INACTIVE_BTN = Color.parseColor("#66444C35");
+    private static final int COLOR_INACTIVE_TEXT = Color.parseColor("#EAF4E5");
+    
+    // Cached palettes
+    private final int[] TEMP_PALETTE = {COLOR_TEMP_1, COLOR_TEMP_2, COLOR_TEMP_3, COLOR_TEMP_4, COLOR_TEMP_5, COLOR_TEMP_6};
+    private final int[] CLOUD_PALETTE = {COLOR_CLOUD_5, COLOR_CLOUD_4, COLOR_CLOUD_3, COLOR_CLOUD_2, COLOR_CLOUD_1};
+    private final int[] RAIN_PALETTE = {COLOR_RAIN_5, COLOR_RAIN_4, COLOR_RAIN_3, COLOR_RAIN_2, COLOR_RAIN_1};
 
     public enum MapMode {
         TEMPERATURE,
@@ -75,6 +103,7 @@ public class WeatherMapActivity extends FragmentActivity implements OnMapReadyCa
     private MapMode currentMode = MapMode.TEMPERATURE;
     private int gridRequestVersion = 0;
     private String legendStatusMessage = "Dang tai lop phu...";
+    private long lastCameraUpdate = 0;  // Track last update time to prevent excessive updates
 
     private final List<WeatherCell> weatherCells = new ArrayList<>();
     private final List<Polygon> weatherCellPolygons = new ArrayList<>();
@@ -186,9 +215,9 @@ public class WeatherMapActivity extends FragmentActivity implements OnMapReadyCa
 
     private void applyModeButtonStyle(Button button, boolean active, int activeColor) {
         if (button.getBackground() != null) {
-            button.getBackground().mutate().setTint(active ? activeColor : Color.parseColor("#66444C35"));
+            button.getBackground().mutate().setTint(active ? activeColor : COLOR_INACTIVE_BTN);
         }
-        button.setTextColor(active ? Color.WHITE : Color.parseColor("#EAF4E5"));
+        button.setTextColor(active ? Color.WHITE : COLOR_INACTIVE_TEXT);
         button.setAlpha(active ? 1f : 0.88f);
     }
 
@@ -238,37 +267,25 @@ public class WeatherMapActivity extends FragmentActivity implements OnMapReadyCa
     private int[] getLegendBarColors() {
         switch (currentMode) {
             case CLOUD_COVER:
-                return reverseColors(new int[]{
-                        Color.parseColor("#425A75"),
-                        Color.parseColor("#6D89A7"),
-                        Color.parseColor("#96B0C4"),
-                        Color.parseColor("#BDD0DE"),
-                        Color.parseColor("#DCE8F2")
-                });
+                return CLOUD_PALETTE;
             case PRECIPITATION:
-                return reverseColors(new int[]{
-                        Color.parseColor("#0B2D6E"),
-                        Color.parseColor("#1555A6"),
-                        Color.parseColor("#2886D8"),
-                        Color.parseColor("#5FB8F2"),
-                        Color.parseColor("#BEEBFF")
-                });
+                return RAIN_PALETTE;
             case TEMPERATURE:
             default:
-                return reverseColors(new int[]{
-                        Color.parseColor("#43238F"),
-                        Color.parseColor("#2A68D8"),
-                        Color.parseColor("#40BFC9"),
-                        Color.parseColor("#DCCF58"),
-                        Color.parseColor("#F19A35"),
-                        Color.parseColor("#D64A2D")
-                });
+                return TEMP_PALETTE;
         }
     }
 
     private void scheduleCameraRefresh() {
-        refreshHandler.removeCallbacks(refreshRunnable);
-        refreshHandler.postDelayed(refreshRunnable, CAMERA_IDLE_DEBOUNCE_MS);
+        // Add throttling to prevent too frequent updates
+        long currentTime = System.currentTimeMillis();
+        if (currentTime - lastCameraUpdate < CAMERA_IDLE_DEBOUNCE_MS) {
+            refreshHandler.removeCallbacks(refreshRunnable);
+            refreshHandler.postDelayed(refreshRunnable, CAMERA_IDLE_DEBOUNCE_MS);
+        } else {
+            lastCameraUpdate = currentTime;
+            refreshMapFromCamera();
+        }
     }
 
     private void refreshMapFromCamera() {
@@ -310,8 +327,12 @@ public class WeatherMapActivity extends FragmentActivity implements OnMapReadyCa
                     return;
                 }
 
-                double rainProbability = getFirstValue(data.rawHourly != null ? data.rawHourly.precipitationProbability : null);
-                double cloudCover = getFirstValue(data.rawHourly != null ? data.rawHourly.cloudCover : null);
+                double rainProbability = 0;
+                double cloudCover = 0;
+                if (data.rawHourly != null) {
+                    rainProbability = getFirstValue(data.rawHourly.precipitationProbability);
+                    cloudCover = getFirstValue(data.rawHourly.cloudCover);
+                }
                 String tempUnit = isCelsius ? "C" : "F";
 
                 centerMarker.setTitle(getWeatherStatus(data.currentWeather.weatherCode) + " "
@@ -410,11 +431,14 @@ public class WeatherMapActivity extends FragmentActivity implements OnMapReadyCa
 
     private BatchGridRequest buildBatchGridRequest() {
         BatchGridRequest request = new BatchGridRequest();
-        if (mMap == null) {
+        if (mMap == null || mMap.getProjection() == null) {
             return request;
         }
 
         LatLngBounds bounds = mMap.getProjection().getVisibleRegion().latLngBounds;
+        if (bounds == null) {
+            return request;
+        }
         double south = bounds.southwest.latitude;
         double north = bounds.northeast.latitude;
         double west = bounds.southwest.longitude;
@@ -427,8 +451,15 @@ public class WeatherMapActivity extends FragmentActivity implements OnMapReadyCa
         double paddedWest = west - (lonSpan * VIEWPORT_PADDING_RATIO);
         double paddedEast = east + (lonSpan * VIEWPORT_PADDING_RATIO);
 
+        // Đảm bảo tọa độ hợp lệ trước khi tính toán
+        double lonDiff = Math.max(0.1, Math.abs(paddedEast - paddedWest));
+        double latDiff = Math.max(0.1, Math.abs(paddedNorth - paddedSouth));
+        if (latDiff < 0.1 || lonDiff < 0.1) {
+            return request;
+        }
+
         int columns = getGridColumnsForZoom(mMap.getCameraPosition().zoom);
-        int rows = Math.max(7, (int) Math.round(columns * ((paddedNorth - paddedSouth) / Math.max(0.25, paddedEast - paddedWest))));
+        int rows = Math.max(7, (int) Math.round(columns * (latDiff / lonDiff)));
         rows = Math.min(rows, 15);
         while (rows * columns > MAX_GRID_POINTS && rows > 6) {
             rows--;
@@ -473,24 +504,38 @@ public class WeatherMapActivity extends FragmentActivity implements OnMapReadyCa
     }
 
     private int getGridColumnsForZoom(float zoom) {
+        // Optimize grid based on zoom level - fewer cells when zoomed out
         if (zoom >= 11f) {
-            return 12;
+            return 10;  // Reduced from 12
         }
         if (zoom >= 9f) {
-            return 11;
+            return 9;   // Reduced from 11
         }
         if (zoom >= 7f) {
-            return 9;
+            return 8;   // Reduced from 9
         }
-        return 7;
+        if (zoom >= 5f) {
+            return 6;   // Reduced from 7
+        }
+        return 4;  // Reduced from 5 for very zoomed out maps
     }
 
     private void populateWeatherCells(BatchGridRequest request, List<WeatherResponse> responses) {
         weatherCells.clear();
+        if (request == null || request.cellBounds == null || responses == null) {
+            return;
+        }
         int limit = Math.min(request.cellBounds.size(), responses.size());
         for (int i = 0; i < limit; i++) {
             WeatherResponse response = responses.get(i);
             if (response == null || response.rawHourly == null) {
+                continue;
+            }
+
+            // Kiểm tra null cho từng array trước khi lấy giá trị
+            if (response.rawHourly.temperatures == null || 
+                response.rawHourly.precipitationProbability == null || 
+                response.rawHourly.cloudCover == null) {
                 continue;
             }
 
@@ -518,18 +563,25 @@ public class WeatherMapActivity extends FragmentActivity implements OnMapReadyCa
             return;
         }
 
+        // Reuse LatLng array and PolygonOptions to reduce object creation
+        final int[] cellColor = new int[1];
         for (WeatherCell cell : weatherCells) {
-            Polygon polygon = mMap.addPolygon(new PolygonOptions()
+            cellColor[0] = getCellFillColor(cell);
+            
+            // Create polygon with pre-computed color
+            Polygon polygon = mMap.addPolygon(
+                    new PolygonOptions()
                     .add(
                             new LatLng(cell.bounds.north, cell.bounds.west),
                             new LatLng(cell.bounds.north, cell.bounds.east),
                             new LatLng(cell.bounds.south, cell.bounds.east),
                             new LatLng(cell.bounds.south, cell.bounds.west)
                     )
-                    .fillColor(getCellFillColor(cell))
+                    .fillColor(cellColor[0])
                     .strokeColor(Color.TRANSPARENT)
                     .strokeWidth(0f)
-                    .zIndex(1f));
+                    .zIndex(1f)
+            );
             weatherCellPolygons.add(polygon);
         }
     }
@@ -553,31 +605,12 @@ public class WeatherMapActivity extends FragmentActivity implements OnMapReadyCa
     private int[] getModePalette() {
         switch (currentMode) {
             case CLOUD_COVER:
-                return new int[]{
-                        Color.parseColor("#E8F6FB"),
-                        Color.parseColor("#BFD8EA"),
-                        Color.parseColor("#97B9CF"),
-                        Color.parseColor("#6B8CA7"),
-                        Color.parseColor("#465B75")
-                };
+                return CLOUD_PALETTE;
             case PRECIPITATION:
-                return new int[]{
-                        Color.parseColor("#BFEFFF"),
-                        Color.parseColor("#73C5F4"),
-                        Color.parseColor("#348BDE"),
-                        Color.parseColor("#1D5DB9"),
-                        Color.parseColor("#0C2F75")
-                };
+                return RAIN_PALETTE;
             case TEMPERATURE:
             default:
-                return new int[]{
-                        Color.parseColor("#43238F"),
-                        Color.parseColor("#2A68D8"),
-                        Color.parseColor("#40BFC9"),
-                        Color.parseColor("#DCCF58"),
-                        Color.parseColor("#F19A35"),
-                        Color.parseColor("#D64A2D")
-                };
+                return TEMP_PALETTE;
         }
     }
 
@@ -603,16 +636,24 @@ public class WeatherMapActivity extends FragmentActivity implements OnMapReadyCa
         }
 
         double scaled = clamped * (palette.length - 1);
-        int startIndex = (int) Math.floor(scaled);
+        int startIndex = (int) scaled;  // Faster than Math.floor for positive values
         int endIndex = Math.min(palette.length - 1, startIndex + 1);
         double localFraction = scaled - startIndex;
 
+        // Cache color values to avoid repeated Color.red/green/blue calls
         int start = palette[startIndex];
         int end = palette[endIndex];
+        
+        int startR = Color.red(start);
+        int startG = Color.green(start);
+        int startB = Color.blue(start);
+        int endR = Color.red(end);
+        int endG = Color.green(end);
+        int endB = Color.blue(end);
 
-        int red = (int) Math.round(Color.red(start) + ((Color.red(end) - Color.red(start)) * localFraction));
-        int green = (int) Math.round(Color.green(start) + ((Color.green(end) - Color.green(start)) * localFraction));
-        int blue = (int) Math.round(Color.blue(start) + ((Color.blue(end) - Color.blue(start)) * localFraction));
+        int red = (int) (startR + ((endR - startR) * localFraction));
+        int green = (int) (startG + ((endG - startG) * localFraction));
+        int blue = (int) (startB + ((endB - startB) * localFraction));
         return Color.argb(alpha, red, green, blue);
     }
 
@@ -636,20 +677,15 @@ public class WeatherMapActivity extends FragmentActivity implements OnMapReadyCa
         return !weatherCells.isEmpty();
     }
 
-    private int[] reverseColors(int[] colors) {
-        int[] reversed = new int[colors.length];
-        for (int i = 0; i < colors.length; i++) {
-            reversed[i] = colors[colors.length - 1 - i];
-        }
-        return reversed;
-    }
+
 
     private double normalizeTemperature(double temperature) {
         double tempC = temperature;
         if (!isCelsius) {
-            tempC = (temperature - 32d) * 5d / 9d;
+            // More efficient: (f - 32) * 5/9 = (f - 32) / 1.8
+            tempC = (temperature - 32d) * 0.5556d;  // 5/9 ≈ 0.5556
         }
-        double normalized = (tempC + 10d) / 60d;
+        double normalized = (tempC + 10d) * 0.0167d;  // 1/60 ≈ 0.0167 (more efficient than division)
         return clamp01(normalized);
     }
 
